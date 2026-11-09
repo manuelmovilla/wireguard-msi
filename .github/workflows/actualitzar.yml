@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   actualitzar:
@@ -53,5 +52,19 @@ jobs:
             --notes "Instal·lador oficial de WireGuard per a Windows, versió $ver, descarregat de download.wireguard.com sense cap modificació." \
             --latest
 
+      - name: Descarregar el repositori
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Mantenir el workflow actiu
-        uses: gautamkrishnar/keepalive-workflow@v2
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt $((45*86400)) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Manteniment: mantenir actiu el workflow"
+            git push
+          else
+            echo "El repositori té activitat recent, no cal fer res."
+          fi
