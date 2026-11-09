@@ -1,0 +1,57 @@
+name: Actualitzar WireGuard MSI
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'   # cada dilluns
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/actualitzar.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  actualitzar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Buscar la darrera versió
+        id: v
+        run: |
+          base="https://download.wireguard.com/windows-client/"
+          ver=$(curl -sSf "$base" | grep -oE 'wireguard-amd64-[0-9.]+\.msi' | sed -E 's/wireguard-amd64-([0-9.]+)\.msi/\1/' | sort -uV | tail -1)
+          [ -n "$ver" ] || { echo "No s'ha trobat cap versió"; exit 1; }
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          echo "Darrera versió: $ver"
+
+      - name: Comprovar si ja està publicada
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.ver }}" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Descarregar i publicar la release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ver="${{ steps.v.outputs.ver }}"
+          base="https://download.wireguard.com/windows-client"
+          for arch in amd64 arm64 x86; do
+            curl -sSfL -o "wireguard-$arch.msi" "$base/wireguard-$arch-$ver.msi"
+          done
+          sha256sum wireguard-*.msi > SHA256SUMS.txt
+          gh release create "v$ver" wireguard-amd64.msi wireguard-arm64.msi wireguard-x86.msi SHA256SUMS.txt \
+            -R "${{ github.repository }}" \
+            --title "WireGuard $ver" \
+            --notes "Instal·lador oficial de WireGuard per a Windows, versió $ver, descarregat de download.wireguard.com sense cap modificació." \
+            --latest
+
+      - name: Mantenir el workflow actiu
+        uses: gautamkrishnar/keepalive-workflow@v2
